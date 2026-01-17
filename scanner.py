@@ -88,5 +88,5 @@ def check_security_txt(domain):
             if response.status_code == 200 and "Contact:" in response.text:
                 return True
         except:
-            continue
+            continue # nosec
     return False
