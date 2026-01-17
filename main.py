@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -7,13 +7,20 @@ from sqlalchemy.orm import Session
 from typing import List
 from datetime import timedelta, datetime
 from jose import JWTError, jwt
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from scanner import get_ssl_details, check_security_headers, scan_ports, check_security_txt
 from report import generate_pdf
 from database import ScanRecord, SessionLocal, init_db, User
 from auth import verify_password, get_password_hash, create_access_token, SECRET_KEY, ALGORITHM
 
-app = FastAPI(title="SecuWatch API", description="API SecuWatch V3 (Auth)", version="3.0")
+limiter = Limiter(key_func=get_remote_address)
+
+app = FastAPI(title="SecuWatch API", description="API SecuWatch V4 (Protected)", version="4.0")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 init_db()
 
@@ -74,7 +81,8 @@ class Token(BaseModel):
     token_type: str
 
 @app.post("/register", response_model=Token)
-def register(user: UserCreate, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def register(request: Request, user: UserCreate, db: Session = Depends(get_db)):
     db_user = db.query(User).filter(User.email == user.email).first()
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -92,7 +100,8 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.post("/token", response_model=Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == form_data.username).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
@@ -108,7 +117,8 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.get("/scan", response_model=ScanResult)
-def scan_domain(domain: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def scan_domain(request: Request, domain: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     clean_domain = domain.replace("https://", "").replace("http://", "").strip("/")
     
     ssl_res = get_ssl_details(clean_domain)
