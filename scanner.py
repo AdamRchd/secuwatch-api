@@ -1,6 +1,7 @@
 import socket
 import ssl
 import requests
+import concurrent.futures
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -55,19 +56,25 @@ def check_security_headers(url):
     except requests.exceptions.RequestException as e:
         return 0, {"Erreur": f"Impossible de contacter le site: {str(e)}"}
 
+def check_single_port(hostname, port):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(1)
+    result = sock.connect_ex((hostname, port))
+    sock.close()
+    return port if result == 0 else None
+
 def scan_ports(hostname):
-    target_ports = [21, 22, 25, 53, 8080, 3306]
+    target_ports = [21, 22, 25, 53, 80, 443, 3306, 5432, 8080, 8443]
     open_ports = []
     
-    for port in target_ports:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(1)
-        result = sock.connect_ex((hostname, port))
-        if result == 0:
-            open_ports.append(port)
-        sock.close()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_port = {executor.submit(check_single_port, hostname, port): port for port in target_ports}
+        for future in concurrent.futures.as_completed(future_to_port):
+            port = future.result()
+            if port:
+                open_ports.append(port)
     
-    return open_ports
+    return sorted(open_ports)
 
 def check_security_txt(domain):
     urls = [
