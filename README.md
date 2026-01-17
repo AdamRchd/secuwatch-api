@@ -35,7 +35,7 @@ Ce projet constitue le Backend de la plateforme SecuWatch. Il s'agit d'une API R
 
 1.  **Cloner le projet**
     ```bash
-    git clone [https://github.com/AdamRchd/secuwatch-api.git](https://github.com/TON-PSEUDO/secuwatch-api.git)
+    git clone [https://github.com/AdamRchd/secuwatch-api.git](https://github.com/AdamRchd/secuwatch-api.git)
     cd secuwatch-api
     ```
 
